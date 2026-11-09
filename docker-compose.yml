@@ -1,0 +1,57 @@
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16
+    container_name: sweety-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sweety_docker_password}
+      POSTGRES_DB: sweety_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sweety_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sweety-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 7005
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-sweety_docker_password}@db:5432/sweety_db?schema=public
+    ports:
+      - "7005:7005"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm start"
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:7005
+    container_name: sweety-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
